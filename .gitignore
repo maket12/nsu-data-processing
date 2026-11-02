@@ -8,3 +8,4 @@ build/
 target/
 *.key
 *.crt
+DEFENSE.md
