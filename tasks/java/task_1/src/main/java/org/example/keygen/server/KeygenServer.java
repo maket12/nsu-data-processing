@@ -23,8 +23,8 @@ import org.example.keygen.common.KeyCertPair;
 import org.example.keygen.crypto.CryptoService;
 
 /**
- * Высокопроизводительный сервер генерации ключей на базе Java NIO Selector
- * и фиксированного пула криптографических потоков.
+ * High-performance RSA key generation server based on Java NIO Selector
+ * and a fixed worker pool for cryptographic operations.
  */
 public class KeygenServer implements AutoCloseable {
 
@@ -51,9 +51,9 @@ public class KeygenServer implements AutoCloseable {
     }
 
     /**
-     * Запускает сервер: открывает сокет, стартует пул потоков и поток NIO Reactor.
+     * Starts the server: binds the socket channel, creates worker pool and reactor thread.
      *
-     * @throws IOException при ошибках привязки сетевого сокета
+     * @throws IOException on socket bind error
      */
     public synchronized void start() throws IOException {
         if (running) {
@@ -77,12 +77,12 @@ public class KeygenServer implements AutoCloseable {
         this.reactorThread = new Thread(this::runReactorLoop, "nio-reactor");
         this.reactorThread.start();
 
-        System.out.printf("Сервер успешно запущен на %s:%d (потоков генерации: %d, размер ключа: %d бит)%n",
+        System.out.printf("[Server] Listening on %s:%d (Worker threads: %d, Key size: %d bits)%n",
                 config.host(), getPort(), config.threads(), config.keySize());
     }
 
     /**
-     * Возвращает фактический порт, на котором слушает сервер (удобно при port = 0).
+     * Returns the actual port the server is listening on.
      */
     public int getPort() {
         if (serverChannel != null && serverChannel.isOpen()) {
@@ -135,7 +135,7 @@ public class KeygenServer implements AutoCloseable {
                 }
             } catch (Exception e) {
                 if (running) {
-                    System.err.println("Ошибка в цикле Reactor: " + e.getMessage());
+                    System.err.println("[Server] Error in Reactor loop: " + e.getMessage());
                 }
             }
         }
@@ -162,7 +162,7 @@ public class KeygenServer implements AutoCloseable {
         int bytesRead = channel.read(readBuffer);
 
         if (bytesRead == -1) {
-            // Клиент закрыл соединение
+            // Client closed connection
             closeSessionSilently(key);
             return;
         }
@@ -171,13 +171,12 @@ public class KeygenServer implements AutoCloseable {
         try {
             boolean nameFinished = session.readNameBytes(readBuffer);
             if (nameFinished) {
-                // Имя прочитано — снимаем интерес к чтению, чтобы не вызывать select зря
+                // Name read completely - remove OP_READ interest
                 key.interestOps(0);
                 submitGeneration(session, session.getClientName());
             }
         } catch (IllegalArgumentException e) {
-            // Превышение лимита длины имени
-            System.err.println("Отклонение клиента: " + e.getMessage());
+            System.err.println("[Server] Rejecting client: " + e.getMessage());
             closeSessionSilently(key);
         }
     }
@@ -197,7 +196,7 @@ public class KeygenServer implements AutoCloseable {
     }
 
     /**
-     * Передает запрос на генерацию ключа в пул или использует кэш.
+     * Submits a key generation task to the worker pool or reuses cached CompletableFuture.
      */
     private void submitGeneration(ClientSession session, String name) {
         CompletableFuture<KeyCertPair> future = cache.computeIfAbsent(name, keyName -> {
@@ -213,7 +212,7 @@ public class KeygenServer implements AutoCloseable {
             return f;
         });
 
-        // Подписываем сессию на завершение (сработает сразу, если ключ уже был в кэше)
+        // Register callback for this session (triggers immediately if already cached)
         future.whenComplete((pair, error) -> {
             outboundQueue.add(new OutboundTask(session, pair, error));
             if (selector != null && selector.isOpen()) {
@@ -223,7 +222,7 @@ public class KeygenServer implements AutoCloseable {
     }
 
     /**
-     * Обрабатывает очередь отправки готовых результатов клиентам.
+     * Drains the outbound transmission queue.
      */
     private void processOutboundQueue() {
         OutboundTask task;
@@ -234,7 +233,7 @@ public class KeygenServer implements AutoCloseable {
             }
 
             if (task.error() != null) {
-                System.err.println("Ошибка генерации ключа для клиента " + session.getClientName() + ": " + task.error().getMessage());
+                System.err.println("[Server] Error generating key for client '" + session.getClientName() + "': " + task.error().getMessage());
                 session.close();
                 activeConnections.decrementAndGet();
                 continue;
@@ -247,7 +246,7 @@ public class KeygenServer implements AutoCloseable {
                     session.close();
                     activeConnections.decrementAndGet();
                 } else {
-                    // Буфер сокета полон (медленный клиент) — регистрируем OP_WRITE
+                    // Socket buffer full (slow client) - register OP_WRITE
                     SelectionKey key = session.getSelectionKey();
                     if (key != null && key.isValid()) {
                         key.interestOps(SelectionKey.OP_WRITE);

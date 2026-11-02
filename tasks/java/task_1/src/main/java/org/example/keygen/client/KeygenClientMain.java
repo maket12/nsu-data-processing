@@ -1,7 +1,7 @@
 package org.example.keygen.client;
 
 /**
- * Консольная точка входа для клиента.
+ * Command-line entry point for the keygen client.
  */
 public class KeygenClientMain {
 
@@ -9,19 +9,19 @@ public class KeygenClientMain {
         ClientConfig config = ClientConfig.parse(args);
 
         try {
-            System.out.printf("Подключение к серверу %s:%d для запроса ключей имени '%s'...%n",
+            System.out.printf("[Client] Connecting to %s:%d to request credentials for '%s'...%n",
                     config.host(), config.port(), config.name());
 
             KeygenClient client = new KeygenClient();
             KeygenClient.ExecutionResult result = client.execute(config);
 
             if (result.aborted()) {
-                System.out.println("Клиент успешно завершил работу в аварийном режиме (--abort).");
+                System.out.println("[Client] Successfully completed in abort mode (--abort).");
             } else {
-                System.out.println("Ключи и сертификат успешно получены и сохранены!");
+                System.out.println("[Client] Key pair and certificate successfully received and stored!");
             }
         } catch (Exception e) {
-            System.err.println("Ошибка выполнения клиента: " + e.getMessage());
+            System.err.println("[Client] Error executing client: " + e.getMessage());
             e.printStackTrace();
             System.exit(1);
         }

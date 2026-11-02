@@ -11,7 +11,7 @@ import java.util.Objects;
 import org.example.keygen.crypto.PemUtils;
 
 /**
- * Сетевой клиент для взаимодействия с сервисом генерации ключей по TCP.
+ * TCP client for interacting with the key generation service.
  */
 public class KeygenClient {
 
@@ -24,11 +24,11 @@ public class KeygenClient {
     ) {}
 
     /**
-     * Выполняет запрос к серверу в соответствии с переданной конфигурацией.
+     * Executes request to key generation server based on provided configuration.
      *
-     * @param config настройки подключения и опции
-     * @return результат выполнения {@link ExecutionResult}
-     * @throws Exception при ошибках соединения, чтения или записи файлов
+     * @param config client configuration
+     * @return {@link ExecutionResult} of the execution
+     * @throws Exception on connection, I/O, or file errors
      */
     public ExecutionResult execute(ClientConfig config) throws Exception {
         Objects.requireNonNull(config, "config cannot be null");
@@ -36,38 +36,38 @@ public class KeygenClient {
         try (Socket socket = new Socket(config.host(), config.port())) {
             OutputStream out = socket.getOutputStream();
 
-            // 1. Отправляем имя (ASCII строка, заканчивающаяся 0x00)
+            // 1. Send name (ASCII string ending with 0x00)
             byte[] nameBytes = config.name().getBytes(StandardCharsets.US_ASCII);
             out.write(nameBytes);
-            out.write(0); // завершающий нулевой байт
+            out.write(0); // terminal null byte
             out.flush();
 
-            // 2. Имитация аварийного завершения клиента
+            // 2. Client crash simulation
             if (config.abort()) {
-                System.out.println("[Client] Режим --abort: соединение разорвано сразу после отправки запроса.");
+                System.out.println("[Client] --abort mode: connection severed immediately after sending request.");
                 return new ExecutionResult(true, null, null, null, null);
             }
 
-            // 3. Имитация медленного клиента
+            // 3. Slow client simulation
             if (config.delaySeconds() > 0) {
-                System.out.printf("[Client] Режим --delay: пауза %d сек перед считыванием ответа...%n", config.delaySeconds());
+                System.out.printf("[Client] --delay mode: pausing for %d seconds before reading response...%n", config.delaySeconds());
                 Thread.sleep(config.delaySeconds() * 1000L);
             }
 
-            // 4. Считывание ответа до закрытия сокета сервером (EOF)
+            // 4. Read response until server closes socket (EOF)
             InputStream in = socket.getInputStream();
             byte[] responseBytes = in.readAllBytes();
             if (responseBytes.length == 0) {
-                throw new IOException("Сервер закрыл соединение без передачи данных.");
+                throw new IOException("Server closed connection without transmitting data.");
             }
 
             String wirePayload = new String(responseBytes, StandardCharsets.UTF_8);
 
-            // 5. Извлечение PEM блоков закрытого ключа и сертификата
+            // 5. Extract PEM blocks for private key and certificate
             String keyPem = PemUtils.extractPrivateKeyPem(wirePayload);
             String certPem = PemUtils.extractCertificatePem(wirePayload);
 
-            // 6. Сохранение в .key и .crt файлы
+            // 6. Save to .key and .crt files
             Path outDir = config.outDir();
             if (!Files.exists(outDir)) {
                 Files.createDirectories(outDir);
@@ -79,8 +79,8 @@ public class KeygenClient {
             Files.writeString(keyFile, keyPem);
             Files.writeString(certFile, certPem);
 
-            System.out.println("[Client] Закрытый ключ сохранен в: " + keyFile.toAbsolutePath());
-            System.out.println("[Client] Сертификат сохранен в:  " + certFile.toAbsolutePath());
+            System.out.println("[Client] Private key saved to: " + keyFile.toAbsolutePath());
+            System.out.println("[Client] Certificate saved to: " + certFile.toAbsolutePath());
 
             return new ExecutionResult(false, keyFile, certFile, keyPem, certPem);
         }

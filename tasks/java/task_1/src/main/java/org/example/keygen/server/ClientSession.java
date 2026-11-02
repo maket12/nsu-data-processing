@@ -8,7 +8,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Инкапсулирует состояние одного клиентского соединения в NIO Selector.
+ * Encapsulates client connection state in NIO Selector.
  */
 public class ClientSession {
 
@@ -34,11 +34,11 @@ public class ClientSession {
     }
 
     /**
-     * Читает байты из входного буфера до нахождения терминального нуля '\0'.
+     * Reads bytes from buffer until terminal null byte '\0' is found.
      *
-     * @param buffer буфер с только что прочитанными данными
-     * @return {@code true}, если имя полностью прочитано (встретился 0x00), иначе {@code false}
-     * @throws IllegalArgumentException если длина имени превысила {@link #MAX_NAME_LENGTH}
+     * @param buffer byte buffer containing newly read bytes
+     * @return {@code true} if name has been read completely (found 0x00), else {@code false}
+     * @throws IllegalArgumentException if name exceeds {@link #MAX_NAME_LENGTH}
      */
     public boolean readNameBytes(ByteBuffer buffer) {
         while (buffer.hasRemaining()) {
@@ -50,16 +50,16 @@ public class ClientSession {
             }
             nameBytes.write(b);
             if (nameBytes.size() > MAX_NAME_LENGTH) {
-                throw new IllegalArgumentException("Имя клиента превышает лимит " + MAX_NAME_LENGTH + " байт");
+                throw new IllegalArgumentException("Client name exceeds limit of " + MAX_NAME_LENGTH + " bytes");
             }
         }
         return false;
     }
 
     /**
-     * Инициализирует буфер отправки подготовленными PEM-данными.
+     * Prepares outbound buffer with PEM payload.
      *
-     * @param payload строковые данные для отправки
+     * @param payload string data to send
      */
     public void prepareOutboundPayload(String payload) {
         byte[] bytes = payload.getBytes(StandardCharsets.UTF_8);
@@ -68,10 +68,10 @@ public class ClientSession {
     }
 
     /**
-     * Сбрасывает данные из writeBuffer в сетевой канал.
+     * Flushes bytes from writeBuffer to socket channel.
      *
-     * @return {@code true}, если все данные полностью отправлены клиенту, иначе {@code false}
-     * @throws IOException при ошибках сокета
+     * @return {@code true} if all bytes were sent, else {@code false}
+     * @throws IOException on socket errors
      */
     public boolean flush() throws IOException {
         if (writeBuffer == null) {

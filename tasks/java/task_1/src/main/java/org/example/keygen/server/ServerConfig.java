@@ -4,7 +4,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * Конфигурация сервера генерации ключей, получаемая из аргументов командной строки.
+ * Server configuration parsed from command-line arguments.
  */
 public record ServerConfig(
         String host,
@@ -17,7 +17,7 @@ public record ServerConfig(
 ) {
     public static final String DEFAULT_HOST = "0.0.0.0";
     public static final int DEFAULT_PORT = 8080;
-    public static final String DEFAULT_ISSUER = "CN=KeygenRootCA, O=KeygenService, C=RU";
+    public static final String DEFAULT_ISSUER = "CN=KeygenRootCA, O=KeygenService, C=US";
     public static final String DEFAULT_CA_KEY = "ca.key";
     public static final String DEFAULT_CA_CERT = "ca.crt";
     public static final int DEFAULT_KEY_SIZE = 8192;
@@ -59,7 +59,7 @@ public record ServerConfig(
                     printHelpAndExit();
                     break;
                 default:
-                    System.err.println("Предупреждение: Неизвестный аргумент " + args[i]);
+                    System.err.println("Warning: Unknown argument " + args[i]);
             }
         }
 
@@ -67,15 +67,15 @@ public record ServerConfig(
     }
 
     private static void printHelpAndExit() {
-        System.out.println("Использование: java KeygenServerMain [опции]");
-        System.out.println("Опции:");
-        System.out.println("  --host <host>       Адрес для привязки сокета (по умолчанию: 0.0.0.0)");
-        System.out.println("  --port <port>       Порт сервера (по умолчанию: 8080)");
-        System.out.println("  --threads <n>       Количество генерирующих потоков (по умолчанию: число ядер CPU)");
-        System.out.println("  --issuer <dn>       Issuer Name для X.509 сертификатов");
-        System.out.println("  --ca-key <path>     Путь к закрытому ключу CA (по умолчанию: ca.key)");
-        System.out.println("  --ca-cert <path>    Путь к сертификату CA (по умолчанию: ca.crt)");
-        System.out.println("  --key-size <bits>   Размер генерируемого ключа RSA (по умолчанию: 8192)");
+        System.out.println("Usage: java KeygenServerMain [options]");
+        System.out.println("Options:");
+        System.out.println("  --host <host>       Socket bind address (default: 0.0.0.0)");
+        System.out.println("  --port <port>       Server port (default: 8080)");
+        System.out.println("  --threads <n>       Number of key generator threads (default: CPU cores)");
+        System.out.println("  --issuer <dn>       Issuer Name for X.509 certificates");
+        System.out.println("  --ca-key <path>     Path to CA private key (default: ca.key)");
+        System.out.println("  --ca-cert <path>    Path to CA certificate (default: ca.crt)");
+        System.out.println("  --key-size <bits>   RSA key size in bits (default: 8192)");
         System.exit(0);
     }
 }

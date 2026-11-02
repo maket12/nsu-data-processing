@@ -4,7 +4,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * Параметры командной строки для клиента генерации ключей.
+ * Command-line options for the keygen client.
  */
 public record ClientConfig(
         String host,
@@ -51,7 +51,7 @@ public record ClientConfig(
                     printHelpAndExit();
                     break;
                 default:
-                    System.err.println("Предупреждение: Неизвестный аргумент " + args[i]);
+                    System.err.println("Warning: Unknown argument " + args[i]);
             }
         }
 
@@ -59,14 +59,14 @@ public record ClientConfig(
     }
 
     private static void printHelpAndExit() {
-        System.out.println("Использование: java KeygenClientMain [опции]");
-        System.out.println("Опции:");
-        System.out.println("  --host <host>      DNS-имя или IP сервера (по умолчанию: localhost)");
-        System.out.println("  --port <port>      Порт сервера (по умолчанию: 8080)");
-        System.out.println("  --name <name>      Имя для сертификата (по умолчанию: client)");
-        System.out.println("  --out-dir <path>   Директория сохранения файлов (по умолчанию: текущая)");
-        System.out.println("  --delay <sec>      Задержка в секундах перед вычитыванием ответа (медленный клиент)");
-        System.out.println("  --abort            Завершение работы без считывания ответа (авария)");
+        System.out.println("Usage: java KeygenClientMain [options]");
+        System.out.println("Options:");
+        System.out.println("  --host <host>      Server host or IP (default: localhost)");
+        System.out.println("  --port <port>      Server port (default: 8080)");
+        System.out.println("  --name <name>      Subject name for certificate (default: client)");
+        System.out.println("  --out-dir <path>   Output directory for credentials (default: current dir)");
+        System.out.println("  --delay <sec>      Delay in seconds before reading response (slow client)");
+        System.out.println("  --abort            Abort connection immediately after sending request");
         System.exit(0);
     }
 }

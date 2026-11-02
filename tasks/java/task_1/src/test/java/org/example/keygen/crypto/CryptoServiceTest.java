@@ -12,13 +12,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class CryptoServiceTest {
 
     @Test
-    @DisplayName("Проверка генерации клиентской пары ключей и валидации выданного X.509 сертификата")
+    @DisplayName("Verify client key pair generation and X.509 certificate validation")
     void testClientKeyAndCertificateGeneration(@TempDir Path tempDir) throws Exception {
         Path caKeyPath = tempDir.resolve("ca.key");
         Path caCertPath = tempDir.resolve("ca.crt");
-        CaManager caManager = CaManager.loadOrCreate(caKeyPath, caCertPath, "CN=RootCA, O=Test, C=RU");
+        CaManager caManager = CaManager.loadOrCreate(caKeyPath, caCertPath, "CN=RootCA, O=Test, C=US");
 
-        // Для ускорения unit-теста используем размер 2048 бит
+        // Use 2048-bit key size for fast unit testing
         CryptoService cryptoService = new CryptoService(caManager, 2048);
 
         String clientName = "john_doe";
@@ -28,17 +28,17 @@ class CryptoServiceTest {
         assertNotNull(result.privateKeyPem());
         assertNotNull(result.certificatePem());
 
-        // Проверяем сертификат
+        // Verify certificate
         X509Certificate clientCert = PemUtils.parseCertificate(result.certificatePem());
         assertNotNull(clientCert);
 
-        // 1. Проверка Subject DN
+        // 1. Verify Subject DN
         assertTrue(clientCert.getSubjectX500Principal().getName().contains("CN=john_doe"));
 
-        // 2. Проверка подписи сертификата открытым ключом CA
+        // 2. Verify certificate signature using CA public key
         clientCert.verify(caManager.getCaCertificate().getPublicKey());
 
-        // 3. Проверка срока действия
+        // 3. Verify validity period
         clientCert.checkValidity();
     }
 }

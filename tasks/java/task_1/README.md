@@ -1,122 +1,112 @@
-# Лабораторная работа J1: Сервер генерации ключей
+# Lab Assignment J1: RSA Key Generation Service
 
-Реализация высокопроизводительного микросервиса генерации пар ключей RSA (8192 бит) и выпуска сертификатов X.509 с клиентским приложением на Java.
-
----
-
-## Архитектура и особенности реализации
-
-### 1. Неблокирующий ввод-вывод (NIO Multiplexing)
-* Сервер использует **`java.nio.channels.Selector`** (Reactor pattern) для неблокирующей обработки сетевых событий (`OP_ACCEPT`, `OP_READ`, `OP_WRITE`).
-* Одно или несколько соединений не привязаны к отдельным потокам ОС, что позволяет серверу масштабироваться и обслуживать **более сотни одновременно активных клиентов** (включая медленные клиенты) с минимальным потреблением системных ресурсов.
-
-### 2. Фиксированный пул потоков генерации (Crypto Worker Pool)
-* Генерация 8192-битных ключей RSA — вычислительно интенсивная операция.
-* Вычисления выполняются в изолированном пуле потоков фиксированного размера (`--threads <n>`), защищая CPU от перегрузки.
-* Генерация ключей: стандартный `java.security.KeyPairGenerator` (8192 бит).
-* Подпись сертификатов: библиотека **Bouncy Castle** (`org.bouncycastle.cert.X509v3CertificateBuilder`).
-
-### 3. Защита от блокировки генераторов медленными клиентами
-* Завершив вычисление ключа и сертификата, поток генерации помещает результат в потокобезопасную очередь исходящих сообщений (`ConcurrentLinkedQueue<OutboundTask>`) и будит селектор (`selector.wakeup()`).
-* Поток NIO Reactor забирает данные из очереди и неблокирующим образом отправляет их в сокет.
-* Если сетевой буфер медленного клиента полон, сокет регистрируется в селекторе на интерес `OP_WRITE`. Поток генерации ключей освобождается **мгновенно** и возвращается в пул, никогда не ожидая отправки по сети.
-
-### 4. Кэширование и дедупликация конкурентных запросов
-* В памяти сервера поддерживается потокобезопасный кэш `ConcurrentHashMap<String, CompletableFuture<KeyCertPair>>`.
-* Если повторный запрос с тем же именем поступает в момент, когда генерация для этого имени **еще выполняется**, оба клиента подписываются на один и тот же `CompletableFuture`.
-* Тяжелая генерация 8192-битного ключа выполняется **строго один раз**. По завершении результат одновременно рассылается всем ожидающим клиентам.
-* На последующие запросы готовый результат отдается мгновенно из оперативной памяти.
-
-### 5. Центр Сертификации (CA Manager)
-* Ключ и сертификат CA загружаются при старте микросервиса из файлов (`--ca-key`, `--ca-cert`).
-* При отсутствии файлов сервер автоматически генерирует новую пару ключей CA и самоподписанный корневой сертификат X.509, сохраняя их на диск.
-* `Issuer Name` является фиксированным (настраивается аргументом `--issuer`).
-* `Subject Name` сертификата клиента в точности соответствует имени, переданному клиентом (`CN=<client_name>`).
+High-performance microservice for generating RSA key pairs (8192-bit) and issuing X.509 certificates with a client application written in Java.
 
 ---
 
-## Сетевой протокол (Wire Protocol)
+## Architecture & Implementation Details
 
-1. **Запрос:**
-   Клиент передает имя в кодировке ASCII, завершающееся нулевым байтом (`0x00`).
-   Пример: `alice\0`
+### 1. Non-blocking I/O Multiplexing (Java NIO Selector)
+* The server uses **`java.nio.channels.Selector`** (Reactor pattern) to handle I/O events non-blockingly (`OP_ACCEPT`, `OP_READ`, `OP_WRITE`).
+* Sockets are not tied to dedicated OS threads, allowing the server to scale and handle **100+ concurrent clients** (including slow and idle clients) with minimal resource consumption.
 
-2. **Ответ:**
-   Сервер передает поток PEM в кодировке UTF-8, содержащий:
-   - Закрытый ключ клиента в формате PKCS#8:
+### 2. Fixed Worker Thread Pool (Crypto Worker Pool)
+* 8192-bit RSA key generation is computationally expensive.
+* Cryptographic computations are executed in an isolated fixed-size thread pool (`--threads <n>`), protecting the CPU from thrashing.
+* Key generation: `java.security.KeyPairGenerator` (8192-bit).
+* Certificate issuance and signing: **Bouncy Castle** (`org.bouncycastle.cert.X509v3CertificateBuilder`).
+
+### 3. Generator Protection from Slow Clients (Outbound Queue)
+* After generating keys and certificates, worker threads never perform blocking network writes.
+* The worker thread places the result into a thread-safe `ConcurrentLinkedQueue<OutboundTask>` and wakes up the selector (`selector.wakeup()`).
+* The reactor thread drains the outbound queue and writes chunks to the socket (`OP_WRITE`) when the client socket buffer is ready.
+* Worker threads return immediately to process subsequent generation requests.
+
+### 4. In-Memory Caching & Request Deduplication
+* The server maintains an in-memory cache using `ConcurrentHashMap<String, CompletableFuture<KeyCertPair>>`.
+* If a duplicate request for the same name arrives while generation is **already in progress**, both clients attach to the same `CompletableFuture`.
+* Heavy 8192-bit RSA generation runs **strictly once**. When completed, both clients receive identical credentials.
+* Subsequent queries for previously requested names are served instantly from cache.
+
+### 5. Certificate Authority (CA Manager)
+* CA private key and certificate are loaded at startup (`--ca-key`, `--ca-cert`).
+* If files are missing, the server automatically generates a self-signed root CA key pair (4096-bit) and X.509 certificate with `BasicConstraints(isCA = true)` and writes them to disk.
+* `Issuer Name` is fixed (configurable via `--issuer`).
+* `Subject Name` matches the client's requested name (`CN=<client_name>`).
+
+---
+
+## Wire Protocol
+
+1. **Request:**
+   The client sends an ASCII subject name terminated by a null byte (`0x00`).
+   Example: `alice\0`
+
+2. **Response:**
+   The server transmits a UTF-8 stream containing:
+   - Private key in PKCS#8 PEM format:
      ```text
      -----BEGIN PRIVATE KEY-----
      ...
      -----END PRIVATE KEY-----
      ```
-   - Подписанный сертификат X.509:
+   - Signed X.509 certificate in PEM format:
      ```text
      -----BEGIN CERTIFICATE-----
      ...
      -----END CERTIFICATE-----
      ```
-   После завершения передачи сервер закрывает соединение.
+   After transmission completes, the server closes the connection.
 
 ---
 
-## Сборка и запуск
+## Build & Run
 
-### Требования
-* JDK 21 или выше.
+### Prerequisites
+* JDK 21 or higher (tested on JDK 25).
 
-### Сборка проекта
+### Build
 ```bash
 ./gradlew build
 ```
 
-### Запуск сервера (`KeygenServerMain`)
+### Run Server (`KeygenServerMain`)
 ```bash
-./gradlew run --args="--port 8080 --threads 8 --issuer 'CN=RootCA, O=KeygenService, C=RU'"
+./gradlew run --args="--port 8080 --threads 8 --issuer 'CN=RootCA, O=KeygenService, C=US'"
 ```
-**Параметры сервера:**
-* `--host <host>` — адрес сокета (по умолчанию `0.0.0.0`).
-* `--port <port>` — порт для прослушивания (по умолчанию `8080`).
-* `--threads <n>` — число потоков генерации RSA (по умолчанию равно числу ядер CPU).
-* `--issuer <dn>` — Issuer Name для X.509 сертификатов.
-* `--ca-key <path>` — путь к закрытому ключу CA (по умолчанию `ca.key`).
-* `--ca-cert <path>` — путь к сертификату CA (по умолчанию `ca.crt`).
-* `--key-size <bits>` — размер ключа RSA (по умолчанию `8192`).
+**Options:**
+* `--host <host>` — socket bind address (default: `0.0.0.0`).
+* `--port <port>` — listening port (default: `8080`).
+* `--threads <n>` — worker pool size for RSA generation (default: CPU cores).
+* `--issuer <dn>` — Issuer Name for X.509 certificates.
+* `--ca-key <path>` — path to CA private key (default: `ca.key`).
+* `--ca-cert <path>` — path to CA certificate (default: `ca.crt`).
+* `--key-size <bits>` — RSA key size (default: `8192`).
 
-### Запуск клиента (`KeygenClientMain`)
+### Run Client (`KeygenClientMain`)
 ```bash
-# Обычный запрос
+# Standard request
 ./gradlew runClient --args="--host localhost --port 8080 --name alice"
 
-# Запрос с задержкой 3 секунды (эмуляция медленного клиента)
+# Slow client simulation (3-second delay)
 ./gradlew runClient --args="--host localhost --port 8080 --name bob --delay 3"
 
-# Аварийный сброс клиента сразу после отправки запроса
+# Abort simulation (immediate disconnect after request)
 ./gradlew runClient --args="--host localhost --port 8080 --name charlie --abort"
 ```
-**Параметры клиента:**
-* `--host <host>` — адрес или DNS-имя сервера.
-* `--port <port>` — порт сервера.
-* `--name <name>` — запрашиваемое имя субъекта.
-* `--out-dir <path>` — директория для сохранения файлов `<name>.key` и `<name>.crt` (по умолчанию текущая).
-* `--delay <sec>` — пауза в секундах между отправкой запроса и считыванием ответа.
-* `--abort` — немедленный разрыв соединения без считывания ответа.
+**Options:**
+* `--host <host>` — server hostname or IP.
+* `--port <port>` — server port.
+* `--name <name>` — subject name for credentials.
+* `--out-dir <path>` — output directory for `<name>.key` and `<name>.crt`.
+* `--delay <sec>` — delay before reading response.
+* `--abort` — abort immediately after sending request.
 
 ---
 
-## Тестирование
+## Testing
 
-Запуск тестов:
+Run tests:
 ```bash
-./gradlew test
+./gradlew test --rerun
 ```
-
-### Покрытие тестами:
-* **`PemUtilsTest`**: сериализация и десериализация RSA PKCS#8 и X.509 PEM, извлечение блоков из объединенного ответа.
-* **`CaManagerTest`**: создание и загрузка CA, проверка сохранения на диск, проверка самоподписи корневого сертификата.
-* **`CryptoServiceTest`**: генерация ключей и сертификатов, проверка `SubjectDN`, криптографическая проверка подписи открытым ключом CA.
-* **`KeygenServerIntegrationTest`**:
-  * Сквозной обмен запросом и ответом клиента.
-  * Конкурентная дедупликация одновременных запросов с одинаковым именем.
-  * Работа с медленными клиентами (`--delay`) без блокировки параллельных быстрых запросов.
-  * Аварийное отключение клиента (`--abort`) без падения сервера с последующей выдачей ключа из кэша.
-  * Нагрузочное тестирование на 100+ одновременных клиентов через NIO `Selector`.

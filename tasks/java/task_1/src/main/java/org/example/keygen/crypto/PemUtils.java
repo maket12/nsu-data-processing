@@ -20,7 +20,7 @@ import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 
 /**
- * Утилиты для кодирования, декодирования и парсинга объектов ключей и сертификатов в формат PEM.
+ * Utility methods for encoding, decoding, and parsing RSA keys and certificates in PEM format.
  */
 public final class PemUtils {
 
@@ -41,10 +41,10 @@ public final class PemUtils {
     }
 
     /**
-     * Преобразует закрытый ключ в строку PEM (PKCS#8).
+     * Converts a private key into PKCS#8 PEM string.
      *
-     * @param privateKey закрытый ключ
-     * @return строка в формате PEM
+     * @param privateKey private key
+     * @return PEM formatted string
      */
     public static String toPem(PrivateKey privateKey) {
         String base64 = Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(privateKey.getEncoded());
@@ -52,11 +52,11 @@ public final class PemUtils {
     }
 
     /**
-     * Преобразует сертификат X.509 в строку PEM.
+     * Converts an X.509 certificate into PEM string.
      *
-     * @param certificate сертификат
-     * @return строка в формате PEM
-     * @throws CertificateException при ошибке кодирования сертификата
+     * @param certificate X.509 certificate
+     * @return PEM formatted string
+     * @throws CertificateException on certificate encoding failure
      */
     public static String toPem(X509Certificate certificate) throws CertificateException {
         String base64 = Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(certificate.getEncoded());
@@ -64,11 +64,11 @@ public final class PemUtils {
     }
 
     /**
-     * Читает закрытый ключ из строки PEM (поддерживает PKCS#8 и PKCS#1).
+     * Parses a private key from PEM string (supports PKCS#8 and PKCS#1).
      *
-     * @param pemContent содержимое в формате PEM
-     * @return объект {@link PrivateKey}
-     * @throws IOException при ошибках ввода-вывода или неверном формате
+     * @param pemContent PEM content
+     * @return parsed {@link PrivateKey}
+     * @throws IOException on I/O error or invalid format
      */
     public static PrivateKey parsePrivateKey(String pemContent) throws IOException {
         try (PEMParser pemParser = new PEMParser(new StringReader(pemContent))) {
@@ -82,7 +82,7 @@ public final class PemUtils {
             }
         }
 
-        // Запасной вариант парсинга через стандартный PKCS8EncodedKeySpec
+        // Fallback parsing via standard PKCS8EncodedKeySpec
         Matcher matcher = PRIVATE_KEY_PATTERN.matcher(pemContent);
         if (matcher.find()) {
             String base64 = matcher.group(1).replaceAll("\\s+", "");
@@ -91,19 +91,19 @@ public final class PemUtils {
                 KeyFactory keyFactory = KeyFactory.getInstance("RSA");
                 return keyFactory.generatePrivate(new PKCS8EncodedKeySpec(keyBytes));
             } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
-                throw new IOException("Не удалось декодировать закрытый ключ: " + e.getMessage(), e);
+                throw new IOException("Failed to decode private key: " + e.getMessage(), e);
             }
         }
 
-        throw new IOException("В предоставленной строке не найден валидный блок закрытого ключа PEM.");
+        throw new IOException("No valid private key PEM block found in input.");
     }
 
     /**
-     * Читает сертификат X.509 из строки PEM с помощью стандартной CertificateFactory.
+     * Parses an X.509 certificate from PEM string using standard CertificateFactory.
      *
-     * @param pemContent содержимое в формате PEM
-     * @return объект {@link X509Certificate}
-     * @throws CertificateException при ошибках декодирования сертификата
+     * @param pemContent PEM string
+     * @return parsed {@link X509Certificate}
+     * @throws CertificateException on certificate parsing error
      */
     public static X509Certificate parseCertificate(String pemContent) throws CertificateException {
         CertificateFactory factory = CertificateFactory.getInstance("X.509");
@@ -113,32 +113,32 @@ public final class PemUtils {
     }
 
     /**
-     * Извлекает блок закрытого ключа из объединенного ответа сервера.
+     * Extracts the private key PEM block from wire payload.
      *
-     * @param wirePayload полученный текст ответа
-     * @return строка PEM закрытого ключа
-     * @throws IllegalArgumentException если блок закрытого ключа не найден
+     * @param wirePayload wire response string
+     * @return private key PEM string
+     * @throws IllegalArgumentException if private key block is not found
      */
     public static String extractPrivateKeyPem(String wirePayload) {
         Matcher matcher = PRIVATE_KEY_PATTERN.matcher(wirePayload);
         if (matcher.find()) {
             return matcher.group(0);
         }
-        throw new IllegalArgumentException("Закрытый ключ не найден в сетевом ответе");
+        throw new IllegalArgumentException("Private key not found in server response");
     }
 
     /**
-     * Извлекает блок сертификата из объединенного ответа сервера.
+     * Extracts the certificate PEM block from wire payload.
      *
-     * @param wirePayload полученный текст ответа
-     * @return строка PEM сертификата
-     * @throws IllegalArgumentException если блок сертификата не найден
+     * @param wirePayload wire response string
+     * @return certificate PEM string
+     * @throws IllegalArgumentException if certificate block is not found
      */
     public static String extractCertificatePem(String wirePayload) {
         Matcher matcher = CERTIFICATE_PATTERN.matcher(wirePayload);
         if (matcher.find()) {
             return matcher.group(0);
         }
-        throw new IllegalArgumentException("Сертификат X.509 не найден в сетевом ответе");
+        throw new IllegalArgumentException("X.509 certificate not found in server response");
     }
 }

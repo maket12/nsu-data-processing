@@ -24,7 +24,7 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.example.keygen.common.KeyCertPair;
 
 /**
- * Сервис генерации ключевых пар RSA и выпуска сертификатов X.509.
+ * Service for generating RSA key pairs and issuing X.509 certificates.
  */
 public class CryptoService {
 
@@ -45,24 +45,24 @@ public class CryptoService {
     }
 
     /**
-     * Генерирует пару RSA ключей (8192 бит по умолчанию) и выпускает подписанный сертификат X.509
-     * для указанного имени клиента.
+     * Generates an RSA key pair (default 8192 bits) and issues a signed X.509 certificate
+     * for the provided client name.
      *
-     * @param clientName имя клиента (ASCII строка)
-     * @return {@link KeyCertPair} с закрытым ключом и сертификатом в формате PEM
-     * @throws NoSuchAlgorithmException при ошибках криптопровайдера
-     * @throws OperatorCreationException при ошибках инициализации подписи
-     * @throws CertificateException при ошибках создания сертификата
+     * @param clientName client name (ASCII string)
+     * @return {@link KeyCertPair} containing private key and certificate in PEM format
+     * @throws NoSuchAlgorithmException on cryptographic algorithm error
+     * @throws OperatorCreationException on signature initialization error
+     * @throws CertificateException on certificate construction error
      */
     public KeyCertPair generate(String clientName)
             throws NoSuchAlgorithmException, OperatorCreationException, CertificateException {
 
-        // 1. Генерация пары RSA ключей
+        // 1. Generate RSA key pair
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
         kpg.initialize(keySize, secureRandom);
         KeyPair clientKeyPair = kpg.generateKeyPair();
 
-        // 2. Построение сертификата X.509
+        // 2. Build X.509 certificate
         X500Name subjectName = formatSubjectName(clientName);
         BigInteger serialNumber = new BigInteger(159, secureRandom);
 
@@ -79,7 +79,7 @@ public class CryptoService {
                 clientKeyPair.getPublic()
         );
 
-        // Расширения X.509: конечный сертификат (не CA) и использование ключа
+        // X.509 Extensions: End-entity (isCA = false) and KeyUsage
         try {
             certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(false));
             certBuilder.addExtension(
@@ -88,7 +88,7 @@ public class CryptoService {
                     new KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyEncipherment | KeyUsage.dataEncipherment)
             );
         } catch (Exception e) {
-            throw new CertificateException("Не удалось добавить расширения к сертификату", e);
+            throw new CertificateException("Failed to add extensions to certificate", e);
         }
 
         ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA")
@@ -97,7 +97,7 @@ public class CryptoService {
         X509CertificateHolder holder = certBuilder.build(signer);
         X509Certificate clientCert = new JcaX509CertificateConverter().getCertificate(holder);
 
-        // 3. Сериализация в PEM
+        // 3. Serialize to PEM format
         String privateKeyPem = PemUtils.toPem(clientKeyPair.getPrivate());
         String certificatePem = PemUtils.toPem(clientCert);
 

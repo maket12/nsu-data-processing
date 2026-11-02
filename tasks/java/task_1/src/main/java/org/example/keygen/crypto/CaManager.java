@@ -29,8 +29,8 @@ import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
 /**
- * Управляет ключом и сертификатом Центра Сертификации (CA).
- * Загружает существующий CA из файлов или автоматически генерирует новый, если файлы отсутствуют.
+ * Manages Certificate Authority (CA) private key and certificate.
+ * Loads existing CA from files or automatically generates a new self-signed CA if files are absent.
  */
 public class CaManager {
 
@@ -45,18 +45,18 @@ public class CaManager {
     }
 
     /**
-     * Загружает CA из указанных путей. Если файлы отсутствуют, генерирует новую пару и сертификат CA,
-     * сохраняя их по указанным путям.
+     * Loads CA from specified paths. If files do not exist, generates a new CA key pair
+     * and self-signed certificate, saving them to disk.
      *
-     * @param caKeyPath путь к файлу закрытого ключа CA
-     * @param caCertPath путь к файлу сертификата CA
-     * @param defaultIssuerName имя издателя по умолчанию (если требуется генерация)
-     * @return инициализированный экземпляр {@link CaManager}
-     * @throws Exception при ошибках генерации, чтения или сохранения файлов
+     * @param caKeyPath path to CA private key file
+     * @param caCertPath path to CA certificate file
+     * @param defaultIssuerName default issuer DN if generation is required
+     * @return initialized {@link CaManager} instance
+     * @throws Exception on generation, I/O, or parsing error
      */
     public static CaManager loadOrCreate(Path caKeyPath, Path caCertPath, String defaultIssuerName) throws Exception {
         if (Files.exists(caKeyPath) && Files.exists(caCertPath)) {
-            // Читаем существующий CA
+            // Read existing CA
             String keyContent = Files.readString(caKeyPath);
             PrivateKey privateKey = PemUtils.parsePrivateKey(keyContent);
 
@@ -68,7 +68,7 @@ public class CaManager {
             return new CaManager(privateKey, cert);
         }
 
-        // Автоматическая генерация нового CA
+        // Automatic generation of new CA
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
         kpg.initialize(4096, new SecureRandom());
         KeyPair caKeyPair = kpg.generateKeyPair();
@@ -77,7 +77,7 @@ public class CaManager {
         BigInteger serial = new BigInteger(159, new SecureRandom());
         Instant now = Instant.now();
         Date notBefore = Date.from(now.minus(5, ChronoUnit.MINUTES));
-        Date notAfter = Date.from(now.plus(3650, ChronoUnit.DAYS)); // 10 лет
+        Date notAfter = Date.from(now.plus(3650, ChronoUnit.DAYS)); // 10 years
 
         JcaX509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
                 issuer,
@@ -88,7 +88,7 @@ public class CaManager {
                 caKeyPair.getPublic()
         );
 
-        // Расширения для CA: BasicConstraints(isCA = true) и KeyUsage
+        // Extensions for CA: BasicConstraints(isCA = true) and KeyUsage
         certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(true));
         certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign | KeyUsage.cRLSign | KeyUsage.digitalSignature));
 
@@ -97,7 +97,7 @@ public class CaManager {
         X509CertificateHolder holder = certBuilder.build(signer);
         X509Certificate caCert = new JcaX509CertificateConverter().getCertificate(holder);
 
-        // Сохраняем сгенерированные файлы
+        // Save generated files
         if (caKeyPath.getParent() != null) {
             Files.createDirectories(caKeyPath.getParent());
         }

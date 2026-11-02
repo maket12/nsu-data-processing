@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PemUtilsTest {
 
     @Test
-    @DisplayName("Проверка сериализации и десериализации RSA закрытого ключа в PEM")
+    @DisplayName("Verify serialization and deserialization of RSA private key in PEM format")
     void testPrivateKeyPemRoundtrip() throws Exception {
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
         kpg.initialize(2048);
@@ -28,7 +28,7 @@ class PemUtilsTest {
     }
 
     @Test
-    @DisplayName("Проверка извлечения блоков ключа и сертификата из объединенного ответа")
+    @DisplayName("Verify extraction of key and certificate blocks from wire payload")
     void testExtractBlocksFromWirePayload() {
         String dummyPayload = """
                 -----BEGIN PRIVATE KEY-----

@@ -3,11 +3,11 @@ package org.example.keygen.common;
 import java.util.Objects;
 
 /**
- * DTO, содержащий сгенерированный закрытый ключ RSA (PKCS#8 PEM)
- * и подписанный сертификат X.509 (PEM).
+ * Data Transfer Object holding generated RSA private key (PKCS#8 PEM)
+ * and signed X.509 certificate (PEM).
  *
- * @param privateKeyPem закрытый ключ в формате PEM (PKCS#8)
- * @param certificatePem сертификат X.509 в формате PEM
+ * @param privateKeyPem private key in PEM format (PKCS#8)
+ * @param certificatePem X.509 certificate in PEM format
  */
 public record KeyCertPair(String privateKeyPem, String certificatePem) {
     public KeyCertPair {
@@ -16,9 +16,9 @@ public record KeyCertPair(String privateKeyPem, String certificatePem) {
     }
 
     /**
-     * Формирует единый поток PEM для передачи по сети клиенту.
+     * Serializes key pair and certificate into a single PEM wire payload.
      *
-     * @return строковый блок с закрытым ключом и сертификатом
+     * @return payload containing private key and certificate PEM blocks
      */
     public String toWirePayload() {
         return privateKeyPem.trim() + System.lineSeparator() + certificatePem.trim() + System.lineSeparator();

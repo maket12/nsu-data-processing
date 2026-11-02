@@ -39,16 +39,16 @@ class KeygenServerIntegrationTest {
     void setUp() throws Exception {
         Path caKeyPath = tempDir.resolve("ca.key");
         Path caCertPath = tempDir.resolve("ca.crt");
-        caManager = CaManager.loadOrCreate(caKeyPath, caCertPath, "CN=TestRootCA, O=TestLab, C=RU");
+        caManager = CaManager.loadOrCreate(caKeyPath, caCertPath, "CN=TestRootCA, O=TestLab, C=US");
 
-        // Используем 2048 бит для скорости тестов
+        // Use 2048-bit key size for fast test execution
         CryptoService cryptoService = new CryptoService(caManager, 2048);
 
         ServerConfig config = new ServerConfig(
                 "127.0.0.1",
-                0, // свободный порт
+                0, // ephemeral port
                 4,
-                "CN=TestRootCA, O=TestLab, C=RU",
+                "CN=TestRootCA, O=TestLab, C=US",
                 caKeyPath,
                 caCertPath,
                 2048
@@ -67,7 +67,7 @@ class KeygenServerIntegrationTest {
     }
 
     @Test
-    @DisplayName("Успешное получение ключа и сертификата обычным клиентом")
+    @DisplayName("Successful key exchange by a normal client")
     void testSuccessfulClientExchange() throws Exception {
         KeygenClient client = new KeygenClient();
         ClientConfig config = new ClientConfig("127.0.0.1", serverPort, "alice", tempDir, 0, false);
@@ -80,14 +80,14 @@ class KeygenServerIntegrationTest {
         assertTrue(result.keyFile().toFile().exists());
         assertTrue(result.certFile().toFile().exists());
 
-        // Валидация сертификата
+        // Certificate validation
         X509Certificate cert = PemUtils.parseCertificate(result.certificatePem());
         assertTrue(cert.getSubjectX500Principal().getName().contains("CN=alice"));
         cert.verify(caManager.getCaCertificate().getPublicKey());
     }
 
     @Test
-    @DisplayName("Дедупликация одновременных запросов с одинаковым именем")
+    @DisplayName("Deduplication of concurrent requests with identical name")
     void testConcurrentDuplicateRequests() throws Exception {
         int threadsCount = 5;
         ExecutorService executor = Executors.newFixedThreadPool(threadsCount);
@@ -121,7 +121,7 @@ class KeygenServerIntegrationTest {
         assertEquals(threadsCount, receivedKeys.size());
         assertEquals(threadsCount, receivedCerts.size());
 
-        // Все клиенты должны получить в точности один и тот же ключ и сертификат
+        // All clients must receive the exact same key and certificate
         String firstKey = receivedKeys.get(0);
         String firstCert = receivedCerts.get(0);
 
@@ -132,18 +132,18 @@ class KeygenServerIntegrationTest {
             assertEquals(firstCert, cert);
         }
 
-        // В кэше сервера должен быть ровно 1 элемент
+        // Cache must have exactly 1 entry
         assertEquals(1, server.getCachedKeysCount());
     }
 
     @Test
-    @DisplayName("Имитация медленного клиента (--delay) не блокирует параллельные запросы")
+    @DisplayName("Slow client simulation (--delay) does not block parallel requests")
     void testSlowClientDoesNotBlockFastClients() throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch slowStarted = new CountDownLatch(1);
         CountDownLatch fastDone = new CountDownLatch(1);
 
-        // Медленный клиент с задержкой 2 секунды
+        // Slow client with 2-second delay
         executor.submit(() -> {
             try {
                 slowStarted.countDown();
@@ -157,7 +157,7 @@ class KeygenServerIntegrationTest {
 
         slowStarted.await();
 
-        // Быстрый клиент должен успешно выполниться, пока медленный ждет
+        // Fast client should complete immediately while the slow client is waiting
         executor.submit(() -> {
             try {
                 KeygenClient fastClient = new KeygenClient();
@@ -170,12 +170,12 @@ class KeygenServerIntegrationTest {
             }
         });
 
-        assertTrue(fastDone.await(5, TimeUnit.SECONDS), "Быстрый клиент не должен блокироваться медленным");
+        assertTrue(fastDone.await(5, TimeUnit.SECONDS), "Fast client must not be blocked by slow client");
         executor.shutdown();
     }
 
     @Test
-    @DisplayName("Имитация аварийного завершения клиента (--abort) не роняет сервер")
+    @DisplayName("Client crash simulation (--abort) does not crash the server")
     void testClientAbortSimulation() throws Exception {
         KeygenClient client = new KeygenClient();
         ClientConfig config = new ClientConfig("127.0.0.1", serverPort, "aborted_user", tempDir, 0, true);
@@ -183,10 +183,10 @@ class KeygenServerIntegrationTest {
         KeygenClient.ExecutionResult result = client.execute(config);
         assertTrue(result.aborted());
 
-        // Даем серверу короткое время на завершение вычисления и сохранение в кэш
+        // Allow server time to finish calculation and save to cache
         Thread.sleep(500);
 
-        // Повторный запрос нормальным клиентом должен моментально вернуть кэшированный результат
+        // Subsequent query by a normal client should immediately retrieve cached result
         ClientConfig normalConfig = new ClientConfig("127.0.0.1", serverPort, "aborted_user", tempDir, 0, false);
         KeygenClient.ExecutionResult normalResult = client.execute(normalConfig);
 
@@ -196,14 +196,14 @@ class KeygenServerIntegrationTest {
     }
 
     @Test
-    @DisplayName("Поддержка 100+ одновременных подключений через NIO Selector")
+    @DisplayName("Support 100+ concurrent connections via NIO Selector")
     void testHundredConcurrentClients() throws Exception {
         int clientsCount = 100;
         ExecutorService executor = Executors.newFixedThreadPool(20);
         CountDownLatch latch = new CountDownLatch(clientsCount);
         List<Boolean> successFlags = Collections.synchronizedList(new ArrayList<>());
 
-        // Предварительно заполняем кэш, чтобы не тратить десятки секунд на CPU генерацию в тесте
+        // Prepopulate cache to avoid heavy CPU load in test
         KeygenClient warmupClient = new KeygenClient();
         warmupClient.execute(new ClientConfig("127.0.0.1", serverPort, "load_user", tempDir, 0, false));
 
@@ -228,8 +228,8 @@ class KeygenServerIntegrationTest {
             });
         }
 
-        assertTrue(latch.await(20, TimeUnit.SECONDS), "Все 100 клиентов должны успешно получить ответ");
-        assertEquals(clientsCount, successFlags.size(), "Все 100 клиентов должны получить валидный ответ");
+        assertTrue(latch.await(20, TimeUnit.SECONDS), "All 100 clients must receive responses successfully");
+        assertEquals(clientsCount, successFlags.size(), "All 100 clients must receive valid certificates");
         executor.shutdown();
     }
 }
